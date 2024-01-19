@@ -117,32 +117,38 @@ def login():
         flash('ユーザー名またはパスワードが間違っています。', 'error')
         return redirect(url_for('show_login'))
 
+# ユーザー登録ページ用のルート
 @app.route('/register')
 def show_register():
     return render_template('register.html')
 
+# ユーザー登録処理用のルート
 @app.route('/register', methods=['POST'])
 def register():
+    if 'username' in session:
+        # 既にログインしている場合はToDoリストにリダイレクト
+        return redirect(url_for('index'))
+
     username = request.form['username']
     password = request.form['password']
 
+    # パスワードのハッシュ化
+    hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
+
     con = sqlite3.connect(DATABASE)
-    cur = con.execute("SELECT * FROM users WHERE user_name = ?", (username,))
-    existing_user = cur.fetchone()
-    con.close()
+    cur = con.cursor()
 
-    if existing_user:
-        flash('ユーザー名は既に使用されています。別のユーザー名を選択してください。', 'error')
-        return redirect(url_for('show_register'))
-    else:
-        hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
-
-        con = sqlite3.connect(DATABASE)
-        con.execute("INSERT INTO users(user_name, user_password) VALUES (?, ?)", (username, hashed_password))
+    try:
+        # ユーザー登録
+        cur.execute("INSERT INTO users(user_name, user_password) VALUES (?, ?)", (username, hashed_password))
         con.commit()
+        session['username'] = username  # 登録後、自動的にログインするようにする
+        return redirect(url_for('index'))
+    except sqlite3.IntegrityError:
+        # 既に存在するユーザー名の場合は登録ページにリダイレクト
+        return redirect(url_for('show_register'))
+    finally:
         con.close()
-
-        return redirect(url_for('show_login'))
 @app.route('/logout')
 def logout():
     session.pop('username', None)
