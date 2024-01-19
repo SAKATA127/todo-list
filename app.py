@@ -132,20 +132,17 @@ def register():
     username = request.form['username']
     password = request.form['password']
 
-    # パスワードのハッシュ化
     hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
 
     con = sqlite3.connect(DATABASE)
     cur = con.cursor()
 
     try:
-        # ユーザー登録
         cur.execute("INSERT INTO users(user_name, user_password) VALUES (?, ?)", (username, hashed_password))
         con.commit()
-        session['username'] = username  # 登録後、自動的にログインするようにする
+        session['username'] = username
         return redirect(url_for('index'))
     except sqlite3.IntegrityError:
-        # 既に存在するユーザー名の場合は登録ページにリダイレクト
         return redirect(url_for('show_register'))
     finally:
         con.close()
