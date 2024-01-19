@@ -123,26 +123,26 @@ def show_register():
 
 @app.route('/register', methods=['POST'])
 def register():
-    if 'username' in session:
-        return redirect(url_for('index'))
-
     username = request.form['username']
     password = request.form['password']
 
-    hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
-
     con = sqlite3.connect(DATABASE)
-    cur = con.cursor()
+    cur = con.execute("SELECT * FROM users WHERE user_name = ?", (username,))
+    existing_user = cur.fetchone()
+    con.close()
 
-    try:
-        cur.execute("INSERT INTO users(user_name, user_password) VALUES (?, ?)", (username, hashed_password))
-        con.commit()
-        session['username'] = username  
-        return redirect(url_for('index'))
-    except sqlite3.IntegrityError:
+    if existing_user:
+        flash('ユーザー名は既に使用されています。別のユーザー名を選択してください。', 'error')
         return redirect(url_for('show_register'))
-    finally:
+    else:
+        hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+        con = sqlite3.connect(DATABASE)
+        con.execute("INSERT INTO users(user_name, user_password) VALUES (?, ?)", (username, hashed_password))
+        con.commit()
         con.close()
+
+        return redirect(url_for('show_login'))
 @app.route('/logout')
 def logout():
     session.pop('username', None)
