@@ -161,6 +161,11 @@
     </div>
   </div>
 </section>
+<div class="container-fluid fixed-bottom d-flex justify-content-end p-3">
+  <form method="GET" action="{{ url_for('logout') }}">
+      <button type="submit" class="btn btn-danger">ログアウト</button>
+  </form>
+</div>
 <!-- MDB -->
 <script
   type="text/javascript"

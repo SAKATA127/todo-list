@@ -1,54 +1,152 @@
-from flask import Flask
-from flask import render_template
-from flask import request
-from flask import redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, session, flash
 import sqlite3
+import secrets
+import hashlib
 
 app = Flask(__name__)
+app.secret_key = secrets.token_hex(16)
 
-@app.route('/', methods=["GET"])
-def list():
-    con = sqlite3.connect('todos.db')
-    cur = con.execute("select * from todos")
-    todos=[]
-    for row in cur:
-        todo ={'idx': row[0], 'todo': row[1], 'status':row[2]}
-        todos.append(todo)
+DATABASE = "todos.db"
+
+def get_user_id(username):
+    con = sqlite3.connect(DATABASE)
+    cur = con.execute("SELECT user_id FROM users WHERE user_name = ?", (username,))
+    user_id = cur.fetchone()
+    con.close()
+    return user_id[0] if user_id else None
+
+def get_todos(user_id):
+    con = sqlite3.connect(DATABASE)
+    cur = con.execute("SELECT * FROM todos WHERE user_id = ?", (user_id,))
+    todos = [{"idx": row[0], "todo": row[1], "status": row[2]} for row in cur]
+    con.close()
+    return todos
+
+@app.route('/')
+def index():
+    if 'username' not in session:
+        return redirect(url_for('show_login'))
+
+    user_id = get_user_id(session['username'])
+    todos = get_todos(user_id)
+
     return render_template("index.html", todos=todos)
 
 @app.route('/add', methods=["POST"])
 def add():
+    if 'username' not in session:
+        return redirect(url_for('show_login'))
+
     if not request.form['name']:
         return redirect("/")
-    con = sqlite3.connect('todos.db')
-    con.execute("insert into todos(todo) values (?)", (request.form['name'],))
+
+    user_id = get_user_id(session['username'])
+
+    con = sqlite3.connect(DATABASE)
+    con.execute("INSERT INTO todos(todo, user_id) VALUES (?, ?)", (request.form['name'], user_id))
     con.commit()
+    con.close()
+
     return redirect("/")
-    
+
 @app.route('/delete', methods=["POST"])
 def delete():
-    con = sqlite3.connect('todos.db')
+    if 'username' not in session:
+        return redirect(url_for('show_login'))
+
+    con = sqlite3.connect(DATABASE)
+
     for e in request.form.getlist('target'):
-        con.execute("delete from todos where id = ?", (e,))
+        con.execute("DELETE FROM todos WHERE id = ?", (e,))
+
     con.commit()
+    con.close()
+
     return redirect("/")
 
 @app.route('/complete', methods=["POST"])
 def complete():
-    con = sqlite3.connect('todos.db')
+    if 'username' not in session:
+        return redirect(url_for('show_login'))
+
+    con = sqlite3.connect(DATABASE)
+
     for e in request.form.getlist('target'):
-        con.execute("update todos set status = '1' where id = ?", (e,))
+        con.execute("UPDATE todos SET status = 1 WHERE id = ?", (e,))
+
     con.commit()
-    return redirect(url_for('list'))
+    con.close()
+
+    return redirect(url_for('index'))
 
 @app.route('/undo', methods=["POST"])
 def undo():
-    con = sqlite3.connect('todos.db')
+    if 'username' not in session:
+        return redirect(url_for('show_login'))
+
+    con = sqlite3.connect(DATABASE)
+
     for e in request.form.getlist('target'):
-        con.execute("update todos set status = '0' where id = ?", (e,))
+        con.execute("UPDATE todos SET status = 0 WHERE id = ?", (e,))
+
     con.commit()
-    return redirect(url_for('list'))
+    con.close()
+
+    return redirect(url_for('index'))
+
+@app.route('/login')
+def show_login():
+    return render_template('login.html')
+
+@app.route('/login', methods=['POST'])
+def login():
+    username = request.form['username']
+    password = request.form['password']
+
+    hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+    con = sqlite3.connect(DATABASE)
+    cur = con.execute("SELECT * FROM users WHERE user_name = ? AND user_password = ?", (username, hashed_password))
+    user = cur.fetchone()
+    con.close()
+
+    if user:
+        session['username'] = username
+        return redirect(url_for('index'))
+    else:
+        flash('ユーザー名またはパスワードが間違っています。', 'error')
+        return redirect(url_for('show_login'))
+
+@app.route('/register')
+def show_register():
+    return render_template('register.html')
+
+@app.route('/register', methods=['POST'])
+def register():
+    if 'username' in session:
+        return redirect(url_for('index'))
+
+    username = request.form['username']
+    password = request.form['password']
+
+    hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+    con = sqlite3.connect(DATABASE)
+    cur = con.cursor()
+
+    try:
+        cur.execute("INSERT INTO users(user_name, user_password) VALUES (?, ?)", (username, hashed_password))
+        con.commit()
+        session['username'] = username  
+        return redirect(url_for('index'))
+    except sqlite3.IntegrityError:
+        return redirect(url_for('show_register'))
+    finally:
+        con.close()
+@app.route('/logout')
+def logout():
+    session.pop('username', None)
+    return redirect(url_for('login'))
 
 if __name__ == "__main__":
-    # 外部からアクセス可能にするためにhost='0.0.0.0'を使用し、ポート80以外を選択
     app.run(debug=True, host='0.0.0.0', port=5000)
