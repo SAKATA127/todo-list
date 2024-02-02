@@ -122,7 +122,6 @@ def login():
 def show_register():
     return render_template('register.html')
 
-# ユーザー登録処理用のルート
 @app.route('/register', methods=['POST'])
 def register():
     if 'username' in session:
@@ -146,10 +145,12 @@ def register():
         return redirect(url_for('show_register'))
     finally:
         con.close()
+
+# Correct the indentation for the logout route
 @app.route('/logout')
 def logout():
     session.pop('username', None)
     return redirect(url_for('login'))
 
 #if __name__ == "__main__":
-#    app.run(debug=True, host='0.0.0.0', port=5000)
+    #app.run(debug=True, host='0.0.0.0', port=5000)
