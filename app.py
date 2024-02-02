@@ -140,13 +140,14 @@ def register():
         cur.execute("INSERT INTO users(user_name, user_password) VALUES (?, ?)", (username, hashed_password))
         con.commit()
         session['username'] = username
-        return redirect(url_for('index'))
+        flash('ユーザー登録が完了しました。', 'success')  # 任意: 成功メッセージをフラッシュ
+        return redirect(url_for('login'))  # 登録後はログインページにリダイレクト
     except sqlite3.IntegrityError:
+        flash('ユーザー名が既に使用されています。', 'error')  # 任意: エラーメッセージをフラッシュ
         return redirect(url_for('show_register'))
     finally:
         con.close()
 
-# Correct the indentation for the logout route
 @app.route('/logout')
 def logout():
     session.pop('username', None)
