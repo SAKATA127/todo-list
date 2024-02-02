@@ -1,37 +1,34 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
-from flask_sqlalchemy import SQLAlchemy
+import sqlite3
 import secrets
 import hashlib
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///todos.db'  # SQLite3のデータベースを指定
 
-db = SQLAlchemy(app)  # SQLAlchemyのオブジェクトを作成
+DATABASE = "todos.db"
 
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_name = db.Column(db.String(50), unique=True, nullable=False)
-    user_password = db.Column(db.String(64), nullable=False)
-    todos = db.relationship('Todo', backref='user', lazy=True)
+def get_user_id(username):
+    con = sqlite3.connect(DATABASE)
+    cur = con.execute("SELECT user_id FROM users WHERE user_name = ?", (username,))
+    user_id = cur.fetchone()
+    con.close()
+    return user_id[0] if user_id else None
 
-class Todo(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    todo = db.Column(db.String(200), nullable=False)
-    status = db.Column(db.Integer, default=0)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-
-# データベースの初期化
-with app.app_context():
-    db.create_all()
+def get_todos(user_id):
+    con = sqlite3.connect(DATABASE)
+    cur = con.execute("SELECT * FROM todos WHERE user_id = ?", (user_id,))
+    todos = [{"idx": row[0], "todo": row[1], "status": row[2]} for row in cur]
+    con.close()
+    return todos
 
 @app.route('/')
 def index():
     if 'username' not in session:
         return redirect(url_for('show_login'))
 
-    user = User.query.filter_by(user_name=session['username']).first()
-    todos = Todo.query.filter_by(user_id=user.id).all()
+    user_id = get_user_id(session['username'])
+    todos = get_todos(user_id)
 
     return render_template("index.html", todos=todos)
 
@@ -43,11 +40,12 @@ def add():
     if not request.form['name']:
         return redirect("/")
 
-    user = User.query.filter_by(user_name=session['username']).first()
+    user_id = get_user_id(session['username'])
 
-    new_todo = Todo(todo=request.form['name'], user_id=user.id)
-    db.session.add(new_todo)
-    db.session.commit()
+    con = sqlite3.connect(DATABASE)
+    con.execute("INSERT INTO todos(todo, user_id) VALUES (?, ?)", (request.form['name'], user_id))
+    con.commit()
+    con.close()
 
     return redirect("/")
 
@@ -56,13 +54,13 @@ def delete():
     if 'username' not in session:
         return redirect(url_for('show_login'))
 
-    user = User.query.filter_by(user_name=session['username']).first()
+    con = sqlite3.connect(DATABASE)
 
     for e in request.form.getlist('target'):
-        todo_to_delete = Todo.query.filter_by(id=e, user_id=user.id).first()
-        db.session.delete(todo_to_delete)
+        con.execute("DELETE FROM todos WHERE id = ?", (e,))
 
-    db.session.commit()
+    con.commit()
+    con.close()
 
     return redirect("/")
 
@@ -71,13 +69,13 @@ def complete():
     if 'username' not in session:
         return redirect(url_for('show_login'))
 
-    user = User.query.filter_by(user_name=session['username']).first()
+    con = sqlite3.connect(DATABASE)
 
     for e in request.form.getlist('target'):
-        todo_to_complete = Todo.query.filter_by(id=e, user_id=user.id).first()
-        todo_to_complete.status = 1
+        con.execute("UPDATE todos SET status = 1 WHERE id = ?", (e,))
 
-    db.session.commit()
+    con.commit()
+    con.close()
 
     return redirect(url_for('index'))
 
@@ -86,13 +84,13 @@ def undo():
     if 'username' not in session:
         return redirect(url_for('show_login'))
 
-    user = User.query.filter_by(user_name=session['username']).first()
+    con = sqlite3.connect(DATABASE)
 
     for e in request.form.getlist('target'):
-        todo_to_undo = Todo.query.filter_by(id=e, user_id=user.id).first()
-        todo_to_undo.status = 0
+        con.execute("UPDATE todos SET status = 0 WHERE id = ?", (e,))
 
-    db.session.commit()
+    con.commit()
+    con.close()
 
     return redirect(url_for('index'))
 
@@ -107,7 +105,10 @@ def login():
 
     hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
 
-    user = User.query.filter_by(user_name=username, user_password=hashed_password).first()
+    con = sqlite3.connect(DATABASE)
+    cur = con.execute("SELECT * FROM users WHERE user_name = ? AND user_password = ?", (username, hashed_password))
+    user = cur.fetchone()
+    con.close()
 
     if user:
         session['username'] = username
@@ -116,6 +117,7 @@ def login():
         flash('ユーザー名またはパスワードが間違っています。', 'error')
         return redirect(url_for('show_login'))
 
+# ユーザー登録ページ用のルート
 @app.route('/register')
 def show_register():
     return render_template('register.html')
@@ -131,13 +133,20 @@ def register():
 
     hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
 
-    new_user = User(user_name=username, user_password=hashed_password)
-    db.session.add(new_user)
-    db.session.commit()
+    con = sqlite3.connect(DATABASE)
+    cur = con.cursor()
 
-    session['username'] = username
-    return redirect(url_for('index'))
+    try:
+        cur.execute("INSERT INTO users(user_name, user_password) VALUES (?, ?)", (username, hashed_password))
+        con.commit()
+        session['username'] = username
+        return redirect(url_for('index'))
+    except sqlite3.IntegrityError:
+        return redirect(url_for('show_register'))
+    finally:
+        con.close()
 
+# Correct the indentation for the logout route
 @app.route('/logout')
 def logout():
     session.pop('username', None)
