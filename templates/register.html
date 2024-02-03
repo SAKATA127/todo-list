@@ -16,6 +16,17 @@
         <br>
         <button type="submit">登録</button>
     </form>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <ul class="messages">
+                {% for category, message in messages %}
+                    <li{% if category %} class="{{ category }}"{% endif %}>{{ message }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    {% endwith %}
+
     <p>すでにアカウントをお持ちの方は<a href="{{ url_for('login') }}">こちら</a>からログインしてください。</p>
 </body>
 </html>

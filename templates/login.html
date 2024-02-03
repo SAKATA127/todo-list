@@ -16,16 +16,19 @@
         <br>
         <button type="submit">ログイン</button>
     </form>
+    
     {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-    <ul class="messages">
-        {% for category, message in messages %}
-            <li{% if category %} class="{{ category }}"{% endif %}>{{ message }}</li>
-        {% endfor %}
-    </ul>
-    {% endif %}
-{% endwith %}
+        {% if messages %}
+            <ul class="messages">
+                {% for category, message in messages %}
+                    <li{% if category %} class="{{ category }}"{% endif %}>{{ message }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    {% endwith %}
+
     <a href="{{ url_for('show_register') }}">新規ユーザー登録はこちら</a>
 </body>
 </html>
+
 
